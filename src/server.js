@@ -1,16 +1,16 @@
 const express = require("express");
 const app = express();
-const port = 3000;
+const port = 4000;
 
 // temp data einbinden
 const recipes = require("../assets/temp-data.json");
 
-app.get("/recipes", (req, res) => {
+app.get("/api/recipes", (req, res) => {
   res.json(recipes);
 });
 
 // GET recipes/id
-app.get("/recipes/:id", (req, res) => {
+app.get("/api/recipes/:id", (req, res) => {
   const id = req.params.id;
 
   const recipe = recipes.find((recipe) => recipe.id === id)
