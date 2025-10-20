@@ -1,10 +1,20 @@
 // const express = require("express");
 import express from "express";
 import { PrismaClient } from '@prisma/client';
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const prisma = new PrismaClient();
 
 const app = express();
 const port = 4000;
+
+// /assets/images → unter /images im Browser erreichbar
+// z.B. http://localhost:4000/images/spaghetti_bolognese.jpg
+app.use("/images", express.static(path.join(__dirname, "../assets/images")));
 
 // temp data einbinden
 // const recipes = require("../assets/temp-data.json");

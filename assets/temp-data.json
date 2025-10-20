@@ -5,6 +5,7 @@
       "description": "Ein klassisches italienisches Gericht.",
       "duration": 45,
       "instructions": "Zuerst die Spaghetti kochen. Währenddessen das Hackfleisch anbraten und die Tomatensauce hinzufügen. Mit den gekochten Spaghetti servieren.",
+      "image": "spaghetti_bolognese.jpg",
       "ingredients": [
         {
           "id": 1,
@@ -32,6 +33,7 @@
       "description": "Weiche und fluffige Pfannkuchen.",
       "duration": 20,
       "instructions": "Alle Zutaten verrühren, den Teig portionsweise in der Pfanne ausbacken.",
+      "image": "pancakes.jpg",
       "ingredients": [
         {
           "id": 4,
@@ -65,6 +67,7 @@
       "description": "Ein frischer, knuspriger Salat mit Caesar-Dressing.",
       "duration": 15,
       "instructions": "Salat waschen, Dressing zubereiten und zusammen mit Croutons und Parmesan anrichten.",
+      "image": "",
       "ingredients": [
         {
           "id": 8,
