@@ -3,6 +3,7 @@ import express from "express";
 import { PrismaClient } from '@prisma/client';
 import path from "path";
 import { fileURLToPath } from "url";
+import cors from "cors";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +19,9 @@ app.use("/images", express.static(path.join(__dirname, "../assets/images")));
 
 // temp data einbinden
 // const recipes = require("../assets/temp-data.json");
+
+// CORS public
+app.use(cors());
 
 // http://localhost:4000/api/recipes
 app.get("/api/recipes", async (req, res) => {
