@@ -121,16 +121,24 @@ app.get("/api/recipes", async (req, res) => {
 
 // GET recipes/id
 app.get("/api/recipes/:id", async (req, res) => {
-  const id = req.params.id;
+  try {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
 
-  const recipe = await prisma.recipe.findUnique({
-    where: { id: Number(id) },
-    include: { ingredients: true },
-  });
+    const recipe = await prisma.recipe.findUnique({
+      where: { id: id },
+      include: { ingredients: true },
+    });
 
-  if (!recipe) res.status(404).json({ message: "Recipe not found!" });
+    if (!recipe) {
+      return res.status(404).json({ message: "Recipe not found!" });
+    }
 
-  res.json(recipe);
+    res.json(recipe);
+  } catch (error) {
+    console.error("Error fetching recipe:", error);
+    res.status(500).json({ message: `Error fetching recipe: ${id}` });
+  }
 });
 
 // DELETE /api/recipes/:id (transaktionssicher bzgl. DB)
