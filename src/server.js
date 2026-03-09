@@ -6,6 +6,10 @@ import { fileURLToPath } from "url";
 import cors from "cors";
 import { mkdirSync } from "fs";
 import multer from "multer";
+import { unlink } from "fs/promises";
+import authRoutes from "./routes/auth.js";
+import profileRoutes from "./routes/profile.js";
+import authenticate from "./middleware/authenticate.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,9 +57,48 @@ app.use(express.json());
 // URL-encoded Body Parser application/x-www-form-urlencoded
 app.use(express.urlencoded({ extended: true }));
 
+// --- Auth Routes (öffentlich) ---
+app.use("/auth", authRoutes);
+
+// --- Geschützte Route: Profil ---
+app.use("/profile", profileRoutes);
+
+// --- Recipe Routes ---
+// GET Routen bleiben öffentlich (jeder darf Rezepte lesen)
+// http://localhost:4000/api/recipes
+app.get("/api/recipes", async (req, res) => {
+  const recipes = await prisma.recipe.findMany({
+    include: { ingredients: true },
+  });
+  res.json(recipes);
+});
+
+// GET recipes/id
+app.get("/api/recipes/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+    const recipe = await prisma.recipe.findUnique({
+      where: { id: id },
+      include: { ingredients: true },
+    });
+
+    if (!recipe) {
+      return res.status(404).json({ message: "Recipe not found!" });
+    }
+
+    res.json(recipe);
+  } catch (error) {
+    console.error("Error fetching recipe:", error);
+    res.status(500).json({ message: `Error fetching recipe: ${id}` });
+  }
+});
+
+// POST, PUT, DELETE sind geschützt (nur eingeloggte User)
 // POST /api/recipes - create recipe (image optional, default placeholder.png)
 // Middleware maybeUploadImage checks if multipart/form-data
-app.post("/api/recipes", maybeUploadImage, async (req, res) => {
+app.post("/api/recipes", authenticate, maybeUploadImage, async (req, res) => {
   try {
     // Accept both JSON and multipart/form-data
     const parseArray = (val) => {
@@ -111,38 +154,8 @@ app.post("/api/recipes", maybeUploadImage, async (req, res) => {
   }
 });
 
-// http://localhost:4000/api/recipes
-app.get("/api/recipes", async (req, res) => {
-  const recipes = await prisma.recipe.findMany({
-    include: { ingredients: true },
-  });
-  res.json(recipes);
-});
-
-// GET recipes/id
-app.get("/api/recipes/:id", async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-
-    const recipe = await prisma.recipe.findUnique({
-      where: { id: id },
-      include: { ingredients: true },
-    });
-
-    if (!recipe) {
-      return res.status(404).json({ message: "Recipe not found!" });
-    }
-
-    res.json(recipe);
-  } catch (error) {
-    console.error("Error fetching recipe:", error);
-    res.status(500).json({ message: `Error fetching recipe: ${id}` });
-  }
-});
-
 // DELETE /api/recipes/:id (transaktionssicher bzgl. DB)
-app.delete("/api/recipes/:id", async (req, res) => {
+app.delete("/api/recipes/:id", authenticate, async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
 
@@ -171,6 +184,89 @@ app.delete("/api/recipes/:id", async (req, res) => {
   } catch (e) {
     console.error("Error deleting recipe:", e);
     res.status(500).json({ message: "Error deleting recipe" });
+  }
+});
+
+// PUT /api/recipes/:id - update recipe
+app.put("/api/recipes/:id", authenticate, maybeUploadImage, async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  try {
+    const existing = await prisma.recipe.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ message: "Recipe not found" });
+
+    const parseArray = (val) => {
+      if (Array.isArray(val)) return val;
+      if (typeof val === "string" && val.trim()) {
+        try {
+          return JSON.parse(val);
+        } catch {
+          return [];
+        }
+      }
+      return [];
+    };
+
+    const title = (req.body.title || "").trim();
+    const description = req.body.description ?? existing.description;
+    const instructions = req.body.instructions ?? existing.instructions;
+    const duration =
+      req.body.duration === undefined ||
+      req.body.duration === null ||
+      req.body.duration === ""
+        ? existing.duration
+        : Number(req.body.duration);
+
+    if (!title) {
+      return res.status(400).json({ message: "title is required" });
+    }
+    if (duration !== null && Number.isNaN(duration)) {
+      return res.status(400).json({ message: "duration must be a number" });
+    }
+
+    const ingredientsInput = parseArray(req.body.ingredients)
+      .map((i) => ({
+        name: i?.name ?? "",
+        quantity: i?.quantity ?? "",
+      }))
+      .filter((i) => i.name);
+
+    // Neues Bild oder altes behalten
+    const image = req.file ? req.file.filename : existing.image;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      // Alte Zutaten löschen und neue anlegen
+      await tx.ingredient.deleteMany({ where: { recipeId: id } });
+
+      return tx.recipe.update({
+        where: { id },
+        data: {
+          title,
+          description,
+          duration,
+          instructions,
+          image,
+          ingredients: ingredientsInput.length
+            ? { create: ingredientsInput }
+            : undefined,
+        },
+        include: { ingredients: true },
+      });
+    });
+
+    // Altes Bild löschen wenn ein neues hochgeladen wurde
+    if (req.file && existing.image && existing.image !== "placeholder.png") {
+      const oldImagePath = path.join(imagesDir, existing.image);
+      unlink(oldImagePath).catch((err) =>
+        console.error("Old image delete error:", err)
+      );
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error("Error updating recipe:", error);
+    res.status(500).json({ message: "Error updating recipe" });
   }
 });
 
